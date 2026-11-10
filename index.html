@@ -15,7 +15,7 @@
    ===================================================================== */
 window.LOG_CONFIG = {
   sheetsUrl: "https://script.google.com/macros/s/AKfycbzM6c_VCMpwXSWa7KRYzqC7TNQYpg0AZSKs5BOhXOQasunStKbBvhkeY_EuZh-gMb5i/exec",
-  kodeTim: ""
+  kodeTim: "magang-36x8nv"
 };
 </script>
 <style>
@@ -593,7 +593,7 @@ if (HP.get("kode")){
   cfg.token = HP.get("kode").trim(); saveJSON(KEY + ".cfg", cfg); HP.delete("kode");
   try { history.replaceState(null, "", location.pathname + location.search + (isAdmin ? "#admin" : "")); } catch(e){}
 }
-if (!cfg.token && LC.kodeTim) cfg.token = String(LC.kodeTim).trim();
+if (LC.kodeTim) cfg.token = String(LC.kodeTim).trim();
 const connected = () => !!(cfg.url && cfg.token);
 let pending = loadJSON(KEY + ".pending", []);
 const savePending = () => saveJSON(KEY + ".pending", pending);
@@ -1248,7 +1248,7 @@ function initSheets(){
   $("syncBtn").onclick = () => { if ($("syncBtn").dataset.mode === "setup") showView("sheets"); else sync(); };
   $("copyInfo").onclick = () => {
     if (/^https?:$/.test(location.protocol) && LC.sheetsUrl)
-      copyText("Log Aktivitas Magang (link sudah berisi kode tim, jangan disebar ke luar tim):\n" + location.origin + location.pathname + "#kode=" + encodeURIComponent(cfg.token), "Link untuk teman disalin");
+      copyText("Log Aktivitas Magang:\n" + location.origin + location.pathname + (LC.kodeTim ? "" : "#kode=" + encodeURIComponent(cfg.token)), "Link untuk teman disalin");
     else
       copyText("Log Aktivitas Magang — info koneksi Google Sheets\nURL Web App: " + cfg.url + "\nKode tim: " + cfg.token + "\n\nBuka halamannya dengan #admin → tab Google Sheets → isi URL & kode → Hubungkan.", "Info koneksi disalin");
   };
