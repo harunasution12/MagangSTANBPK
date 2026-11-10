@@ -7,14 +7,14 @@
 <script>
 /* =====================================================================
    PENGATURAN — cukup ubah bagian ini
-   sheetsUrl : https://script.google.com/macros/s/AKfycbzM6c_VCMpwXSWa7KRYzqC7TNQYpg0AZSKs5BOhXOQasunStKbBvhkeY_EuZh-gMb5i/exec
+   sheetsUrl : URL Web App Apps Script (berakhiran /exec)
    kodeTim   : sebaiknya DIKOSONGKAN. Setiap orang memasukkan kode tim
                sekali di perangkatnya, atau membuka link berisi #kode=KODE
    Menu admin (Data Peserta & Google Sheets): tambahkan #admin di akhir
    alamat halaman, misalnya https://nama.github.io/log-magang/#admin
    ===================================================================== */
 window.LOG_CONFIG = {
-  sheetsUrl: "",
+  sheetsUrl: "https://script.google.com/macros/s/AKfycbzM6c_VCMpwXSWa7KRYzqC7TNQYpg0AZSKs5BOhXOQasunStKbBvhkeY_EuZh-gMb5i/exec",
   kodeTim: ""
 };
 </script>
@@ -117,6 +117,19 @@ window.LOG_CONFIG = {
   .exp-card.lgb{background:#f3fbf6;border-color:#b7e4c9;border-left:4px solid #067647}
   .gate{border:1px solid #c7d7ee;background:#f5f8fd;border-radius:10px;padding:16px 18px;margin-bottom:16px}
   .gate .err{color:var(--danger)}
+  .pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+  .pick{display:flex;gap:12px;align-items:center;text-align:left;padding:14px;border:1px solid var(--line);border-radius:10px;background:#fff;white-space:normal;width:100%;min-height:72px}
+  .pick:hover{border-color:#1f4e8c;background:#f5f8fd}
+  .pick .nm{font-weight:600;line-height:1.3}
+  .pick .meta{font-size:12px;color:var(--muted);line-height:1.4;margin-top:2px}
+  .pick .tag{display:inline-block;font-size:11px;font-weight:600;color:#1f4e8c;background:#eaf1fb;border-radius:99px;padding:0 7px;margin-top:4px}
+  .pick.add{border-style:dashed;color:#1f4e8c;justify-content:center;font-weight:600}
+  .avatar{flex:none;width:42px;height:42px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;font-size:15px;letter-spacing:.5px}
+  .who{display:flex;align-items:center;gap:10px;justify-content:flex-end}
+  .who .avatar{width:36px;height:36px;font-size:13px}
+  .who-label{font-size:11px;color:var(--muted);line-height:1.2}
+  .who-name{font-weight:600;line-height:1.3}
+  .who button{margin-left:4px}
   .view[hidden]{display:none}
   .warn{background:#fffaeb;border:1px solid #fedf89;color:#93370d;border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:16px}
   .warn button{margin-left:6px}
@@ -142,8 +155,11 @@ window.LOG_CONFIG = {
     </div>
     <div class="peserta">
       <div>
-        <label for="pesertaSel">Peserta</label>
-        <select id="pesertaSel"></select>
+        <div class="who" id="whoBox" hidden>
+          <span class="avatar" id="whoAvatar"></span>
+          <div><div class="who-label">Peserta</div><div class="who-name" id="whoName"></div></div>
+          <button id="switchBtn">Ganti peserta</button>
+        </div>
         <div class="sync" id="syncStatus"><span class="dot"></span><span id="syncText">Data hanya di browser ini</span><button class="ghost" id="syncBtn" hidden>Sinkronkan</button></div>
       </div>
     </div>
@@ -156,6 +172,21 @@ window.LOG_CONFIG = {
     <p class="hint err" id="gateErr"></p>
   </div>
 
+  <div id="picker" hidden>
+  <section class="theme theme-catat">
+    <div class="band">
+      <h2>Pilih Peserta Magang</h2>
+      <input type="search" id="pickSearch" placeholder="Cari nama…" style="width:220px">
+    </div>
+    <div class="body">
+      <p class="hint" style="margin:0 0 14px">Pilih nama Anda untuk mulai mencatat kegiatan.</p>
+      <div class="pick-grid" id="pickGrid"></div>
+      <div class="empty" id="pickEmpty" hidden></div>
+    </div>
+  </section>
+  </div>
+
+  <div id="app" hidden>
   <nav class="tabs">
     <button data-view="catat" class="t-catat on">Catat Kegiatan</button>
     <button data-view="daftar" class="t-daftar">Daftar Kegiatan<span class="tcount" id="tabCount">0</span></button>
@@ -317,6 +348,7 @@ window.LOG_CONFIG = {
   </section>
   </div>
 
+  </div><!-- /app -->
 </div>
 <div id="toast"></div>
 
@@ -599,7 +631,7 @@ function queue(op){
   savePending();
 }
 function ensureActive(){
-  if (!state.peserta.length){ const p = newPeserta(); state.peserta.push(p); if (isAdmin) queue({ type:"upsertPeserta", peserta:clone(p) }); }
+  if (!state.peserta.length){ const p = newPeserta(); state.peserta.push(p); }
   if (!state.peserta.some(p => p.id === state.activeId)) state.activeId = state.peserta[0].id;
 }
 function commit(op){
@@ -638,7 +670,9 @@ function weekRange(offset){
 
 /* ---------- DOM refs ---------- */
 const $ = id => document.getElementById(id);
-const pesertaSel = $("pesertaSel"), tbody = $("tbody");
+const tbody = $("tbody");
+let entered = false;
+const LASTKEY = KEY + ".last";
 const f = { tanggal:$("fTanggal"), hadir:$("fHadir"), ket:$("fKet"), uraian:$("fUraian"), output:$("fOutput") };
 let editingId = null;
 
@@ -656,14 +690,73 @@ function armed(btn, label, fn){
 }
 
 /* ---------- render ---------- */
-function renderPeserta(){
-  pesertaSel.innerHTML = "";
-  state.peserta.forEach((p,i) => {
-    const o = document.createElement("option");
-    o.value = p.id; o.textContent = p.profile.nama.trim() || ("Peserta " + (i+1));
-    if (p.id === state.activeId) o.selected = true;
-    pesertaSel.appendChild(o);
+const AV_COLORS = ["#1f4e8c","#0e7490","#067647","#b54708","#6941c6","#c11574","#475467","#155eef"];
+function initials(name){ const w = name.trim().split(/\s+/).filter(Boolean); return w.length ? ((w[0][0] || "") + (w.length > 1 ? w[w.length-1][0] : "")).toUpperCase() : "?"; }
+function avColor(id){ let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return AV_COLORS[h % AV_COLORS.length]; }
+const displayName = p => p.profile.nama.trim() || "Peserta tanpa nama";
+function setAvatar(el, p){ el.textContent = initials(p.profile.nama); el.style.background = avColor(p.id); }
+
+function renderWho(){
+  const p = active();
+  $("whoName").textContent = displayName(p); setAvatar($("whoAvatar"), p);
+}
+function renderPicker(){
+  const grid = $("pickGrid"), empty = $("pickEmpty");
+  const q = $("pickSearch").value.trim().toLowerCase();
+  let last = null; try { last = localStorage.getItem(LASTKEY); } catch(e){}
+  const list = state.peserta
+    .filter(p => p.profile.nama.trim() || !connected() || (isAdmin && !isBlank(p)))
+    .filter(p => !q || [p.profile.nama, p.profile.nim, p.profile.satker, p.profile.pt].join(" ").toLowerCase().includes(q))
+    .sort((a,b) => displayName(a).localeCompare(displayName(b), "id"));
+  grid.innerHTML = "";
+  list.forEach(p => {
+    const b = document.createElement("button"); b.className = "pick"; b.type = "button";
+    const av = document.createElement("span"); av.className = "avatar"; setAvatar(av, p);
+    const box = document.createElement("div");
+    const nm = document.createElement("div"); nm.className = "nm"; nm.textContent = displayName(p);
+    const meta = document.createElement("div"); meta.className = "meta";
+    meta.textContent = [p.profile.nim, p.profile.satker || p.profile.pt].filter(x => (x||"").trim()).join(" · ") || "Data belum lengkap";
+    const cnt = document.createElement("div"); cnt.className = "meta"; cnt.textContent = p.entries.length + " kegiatan tercatat";
+    box.append(nm, meta, cnt);
+    if (p.id === last){ const t = document.createElement("span"); t.className = "tag"; t.textContent = "Terakhir dipakai"; box.appendChild(t); }
+    b.append(av, box);
+    b.onclick = () => choosePeserta(p.id);
+    grid.appendChild(b);
   });
+  if (isAdmin && !q){
+    const add = document.createElement("button"); add.className = "pick add"; add.type = "button"; add.textContent = "+ Tambah peserta";
+    add.onclick = () => { choosePeserta(null); $("addPeserta").click(); };
+    grid.appendChild(add);
+  }
+  empty.hidden = list.length > 0 || isAdmin;
+  if (!empty.hidden){
+    empty.textContent = q ? "Tidak ada nama yang cocok."
+      : (connected() && syncing && !lastSync) ? "Memuat daftar peserta…"
+      : connected() ? "Belum ada peserta. Minta admin menambahkan nama di Google Sheet (tab Peserta)."
+      : "Belum ada peserta.";
+  }
+}
+function updateScreen(){
+  const needGate = !!(cfg.url && !cfg.token);
+  $("gate").hidden = !needGate;
+  $("picker").hidden = needGate || entered;
+  $("app").hidden = needGate || !entered;
+  $("whoBox").hidden = needGate || !entered;
+}
+function choosePeserta(id){
+  flushProfile();
+  if (id){ state.activeId = id; save(); try { localStorage.setItem(LASTKEY, id); } catch(e){} }
+  entered = true; editingId = null;
+  resetForm(); renderPeserta(); renderTable(); setRange("thisweek");
+  updateScreen(); showView("catat");
+}
+function showPicker(){
+  flushProfile(); entered = false; $("pickSearch").value = "";
+  renderPicker(); updateScreen(); window.scrollTo(0,0);
+}
+
+function renderPeserta(){
+  renderWho(); renderPicker();
   const pr = active().profile;
   document.querySelectorAll("[data-p]").forEach(inp => { if (inp !== document.activeElement) inp.value = pr[inp.dataset.p] || ""; });
   updateProfileStatus();
@@ -745,13 +838,14 @@ function startEdit(id){
 }
 
 /* ---------- events ---------- */
-pesertaSel.onchange = () => { flushProfile(); state.activeId = pesertaSel.value; save(); resetForm(); renderPeserta(); renderTable(); updateRangeInfo(); };
-$("addPeserta").onclick = () => { flushProfile(); const p = newPeserta(); commit(pesertaOp(p)); state.activeId = p.id; save(); resetForm(); renderPeserta(); renderTable(); updateRangeInfo(); showView("peserta"); document.querySelector('[data-p="nama"]').focus(); };
+$("switchBtn").onclick = showPicker;
+$("pickSearch").oninput = renderPicker;
+$("addPeserta").onclick = () => { flushProfile(); const p = newPeserta(); commit(pesertaOp(p)); state.activeId = p.id; save(); try { localStorage.setItem(LASTKEY, p.id); } catch(e){} entered = true; updateScreen(); resetForm(); renderPeserta(); renderTable(); updateRangeInfo(); showView("peserta"); document.querySelector('[data-p="nama"]').focus(); };
 $("delPeserta").onclick = function(){
   armed(this, "Hapus peserta & semua lognya?", () => {
     flushProfile();
     commit({ type:"deletePeserta", id:state.activeId });
-    state.activeId = state.peserta[0].id; save(); resetForm(); renderPeserta(); renderTable(); updateRangeInfo(); toast("Peserta dihapus");
+    state.activeId = state.peserta[0].id; save(); resetForm(); renderPeserta(); renderTable(); updateRangeInfo(); toast("Peserta dihapus"); showPicker();
   });
 };
 document.querySelectorAll("[data-p]").forEach(inp => inp.addEventListener("input", () => {
@@ -759,7 +853,7 @@ document.querySelectorAll("[data-p]").forEach(inp => inp.addEventListener("input
   if (profileDirtyId && profileDirtyId !== p.id) flushProfile();
   profileDirtyId = p.id; clearTimeout(profileTimer);
   profileTimer = setTimeout(() => flushProfile(), 900);
-  if (inp.dataset.p === "nama"){ const o = pesertaSel.selectedOptions[0]; if (o) o.textContent = inp.value.trim() || "Peserta"; }
+  if (inp.dataset.p === "nama") renderWho();
   updateProfileStatus();
 }));
 
@@ -1033,7 +1127,9 @@ function applyServer(list){
   const st = { peserta:(list||[]).map(normPeserta), activeId:state.activeId };
   pending.forEach(op => applyOpLocal(st, op));
   if (keepProfile){ const sp = st.peserta.find(p => p.id === profileDirtyId); if (sp) sp.profile = keepProfile; }
+  const prevId = state.activeId;
   state = st; ensureActive(); save();
+  if (entered && !state.peserta.some(p => p.id === prevId)){ entered = false; toast("Peserta ini sudah dihapus. Silakan pilih ulang."); updateScreen(); }
   renderPeserta(); renderTable(); updateRangeInfo();
   if (editingId && !active().entries.some(e => e.id === editingId)) { /* entri dihapus orang lain: simpan nanti akan membuatnya lagi */ }
 }
@@ -1070,7 +1166,7 @@ function hhmm(t){ const d = new Date(t); return pad2(d.getHours()) + "." + pad2(
 function renderSync(){
   const box = $("syncStatus"), txt = $("syncText"), btn = $("syncBtn");
   box.className = "sync";
-  $("gate").hidden = !(cfg.url && !cfg.token);
+  updateScreen();
   if (!connected()){
     txt.textContent = cfg.url ? "Belum masuk · masukkan kode tim" : "Data hanya di browser ini";
     btn.hidden = !isAdmin; btn.textContent = "Sambungkan Sheets"; btn.dataset.mode = "setup";
@@ -1134,8 +1230,7 @@ async function doConnect(url, token, btn){
     renderSync();
     if (syncError) toast("Tersambung, tapi unggah gagal: " + syncError);
     else toast("Tersambung" + (up ? " · " + up + " kegiatan lokal diunggah" : "") + " · " + (res.peserta||[]).length + " peserta di Sheet");
-    if (!syncError && isAdmin && !active().profile.nama.trim()) showView("peserta");
-    else if (!syncError && $("view-sheets").hidden === false) showView("catat");
+    if (!entered) showPicker();
   } catch(err){
     toast("Gagal: " + err.message);
     if (btn.id === "gateBtn") $("gateErr").textContent = err.message;
@@ -1179,8 +1274,7 @@ function initSheets(){
 
 /* ---------- init ---------- */
 resetForm(); renderPeserta(); renderTable(); setRange("thisweek");
-{ let v = null; try { v = sessionStorage.getItem(KEY + ".view"); } catch(e){}
-  showView(isAdmin && !active().profile.nama.trim() && !connected() ? "peserta" : (v || "catat")); }
+showPicker();
 
 initSheets();
 
